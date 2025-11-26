@@ -21,7 +21,6 @@ class Component:
         self.events: Dict[str, List[Callable]] = {event: [] for event in ['click', 'hover', 'focus', 'blur', 'keypress']}
         self.redraw = True
         self.surface: Optional[pygame.Surface] = None
-        
     
     # RENDER & DRAW
     def draw(self, surface: pygame.Surface) -> None:
@@ -53,24 +52,21 @@ class Component:
             self._root_cache = self if self.parent is None else self.parent.root()
         return self._root_cache
     
+    def register_all(self, bus: AddressBus) -> None:
+        """Recursively register this component and all children with bus"""
+        bus.register(self)
+        for child in self.children:
+            # Recursive call
+            child.register_all(bus)
+    
     def get_metadata(self) -> dict:
         return {
-            'name': getattr(self, 'name', 'Unknown'),
+            'name': getattr(self, 'name', '?'),
             'type': self.__class__.__name__,
-            'address': self.address,
-            'rect': {
-                'x': self.rect.x,
-                'y': self.rect.y, 
-                'width': self.rect.width,
-                'height': self.rect.height
-            },
-            'visible': self.visible,
-            'enabled': self.enabled,
-            'children_count': len(self.children),
-            'timestamp': time.time()
+            'length': len(self.children),
+            'ts': time.time()
         }
         
-   
     def handle_message(self, msg: Packet) -> None:
         hoster = self.root()
         if hoster:
@@ -80,6 +76,11 @@ class Component:
             # discovery protocol
             if msg.rs == Response.M_PING:
                 hoster.bus.post(Packet(receiver=msg.sender,sender=self.address, rs=Response.M_PONG, data=self.get_metadata()))
+            elif msg.rs == Response.M_SHUTDOWN:
+                self.destroy()
+            elif msg.rs == Response.M_REDRAW:
+                hoster.bus.post(Packet(receiver=msg.sender,sender=self.address, rs=Response.M_OK, data=self.get_metadata()))
+                self.reset()
     
     # UTILITIES
     

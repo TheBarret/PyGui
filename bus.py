@@ -16,9 +16,14 @@ class Response(IntEnum):
     M_ERR = 1
     M_BUSY = 2
 
-    # discovery mechanism
+    # discovery
     M_PING = 10
     M_PONG = 11
+    
+    # management
+    M_REDRAW = 20
+    M_SHUTDOWN = 21
+    M_UPDATE = 22
     
 
 @dataclass(frozen=True)
