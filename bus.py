@@ -15,15 +15,24 @@ class Response(IntEnum):
     M_OK = 0
     M_ERR = 1
     M_BUSY = 2
+    
+    # solicitating dialog states
+    M_YES = 3
+    M_NO = 4
+    M_CANCEL = 5
 
     # discovery
-    M_PING = 10
-    M_PONG = 11
+    M_PING = 10     # scan for metadata
+    M_PONG = 11     # metadata reply
     
     # management
-    M_REDRAW = 20
-    M_SHUTDOWN = 21
-    M_UPDATE = 22
+    M_REDRAW = 20   # unconditional redraw
+    M_SHUTDOWN = 21 # unconditional kill switch
+    M_UPDATE = 22   # unconditional theme update
+    M_TERM = 23     # solicitate self destruction
+    M_ORHPAN = 24   # component will remove itself from current parent and posts itself to reciever for adoption
+    
+    
     
 
 @dataclass(frozen=True)

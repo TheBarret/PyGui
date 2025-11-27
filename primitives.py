@@ -1,17 +1,18 @@
 import pygame
 import time
 import random
-from typing import List, Any, Tuple, Callable
+from typing import List, Any, Dict, Tuple, Callable
+
 from component import Component
 from bus import BROADCAST, Response, Packet, AddressBus
+
+# Primitives
 
 class Panel(Component):
     def __init__(self, x: int = 0, y: int = 0, width: int = 200, height: int = 150):
         super().__init__(x, y, width, height)
         self.name = 'Panel'
-        self.bg = pygame.Color(0, 0, 0)
-        self.fg = pygame.Color(255, 255, 255)
-
+        
     def draw(self, surface: pygame.Surface) -> None:
         if not self.visible:
             return
@@ -20,14 +21,6 @@ class Panel(Component):
         pygame.draw.rect(surface, self.fg, src_rect, 1)
         super().draw(surface)
 
-    def handle_message(self, msg: Packet) -> None:
-        if msg.sender == self.address:
-            return
-        if msg.rs == Response.M_UPDATE:
-            self.bg = pygame.Color(msg.data['bg'])
-            self.fg = pygame.Color(msg.data['fg'])
-        super().handle_message(msg)
-
 class Label(Component):
     def __init__(self, x: int = 0, y: int = 0, text: str = "Label", font_size: int = 12):
         self.font = pygame.font.Font('./assets/Chicago-12.ttf', font_size)
@@ -35,32 +28,23 @@ class Label(Component):
         super().__init__(x, y, text_width + 10, text_height + 6)
         self.name = 'Label'
         self.text = text
-        self.font_big = pygame.Color(255, 255, 255)
-        self.bg = pygame.Color(0, 0, 0)
-    
+            
     def draw(self, surface: pygame.Surface) -> None:
         if not self.visible:
             return
         abs_rect = self.get_absolute_rect()
         pygame.draw.rect(surface, self.bg, abs_rect)
+        pygame.draw.rect(surface, self.fg, abs_rect, 1)
+        
         text_surface = self.font.render(self.text, True, self.font_big)
         text_x = abs_rect.x + (abs_rect.width - text_surface.get_width()) // 2
         text_y = abs_rect.y + (abs_rect.height - text_surface.get_height()) // 2
         surface.blit(text_surface, (text_x, text_y))
         super().draw(surface)
-    
-    def handle_message(self, msg: Packet) -> None:
-        if msg.sender == self.address:
-            return
-        if msg.rs == Response.M_UPDATE:
-            self.bg = pygame.Color(msg.data['bg'])
-            self.font_big = pygame.Color(msg.data['font_big'])
-        super().handle_message(msg)
-    
+   
 class Icon(Component):
     def __init__(self, x: int = 0, y: int = 0, image_path: str = "", size: int = 16):
         self.icon_size = size
-        self.bg = pygame.Color(0, 0, 0)
         try:
             original_image = pygame.image.load('./assets/' + image_path).convert_alpha()
             self.image = pygame.transform.scale(original_image, (size, size))
@@ -81,258 +65,21 @@ class Icon(Component):
         pygame.draw.rect(surface, self.bg, abs_rect, 1)
         super().draw(surface)
         
-    def handle_message(self, msg: Packet) -> None:
-        if msg.sender == self.address:
-            return
-        if msg.rs == Response.M_UPDATE:
-            self.bg = pygame.Color(msg.data['bg'])
-                
-        super().handle_message(msg)
-        
-class MenuStrip(Component):
-    def __init__(self, height: int = 24):
-        super().__init__(3, 1, 0, height)
-        self.name = 'MenuStrip'
-        self.menu_items = []
-        self.item_height = height
-        self.fg = pygame.Color(255, 255, 255)
-        
-    def initialize(self) -> None:
-        if self.parent:
-            # Position below header (assuming header is first child)
-            header = self.parent.children[0] if self.parent.children else None
-            if header:
-                self.y = header.height
-                self.width = self.parent.width
-        
-    def add_menu(self, text: str, callback: Callable = None) -> 'MenuItem':
-        x_pos = sum(item.width for item in self.menu_items)
-        item = MenuItem(x_pos, 0, text, callback)
-        item.name = f'Menu_{text}'
-        self.add(item)
-        self.menu_items.append(item)
-        return item
-    
-    def draw(self, surface: pygame.Surface) -> None:
-        if not self.visible:
-            return
-        abs_rect = self.get_absolute_rect()
-        pygame.draw.rect(surface, self.fg, abs_rect, 1)
-        super().draw(surface)
-        
-    def handle_message(self, msg: Packet) -> None:
-        if msg.sender == self.address:
-            return
-        if msg.rs == Response.M_UPDATE:
-            self.fg = pygame.Color(msg.data['fg'])
-            
-        
-class MenuItem(Component):
-    def __init__(self, x: int, y: int, text: str, callback: Callable = None):
-        self.font = pygame.font.Font('./assets/Chicago-12.ttf', 11)
-        text_width = self.font.size(text)[0] + 20  # Padding
-        super().__init__(x, y, text_width, 24)
-        self.text = text
-        self.callback = callback
-        self.hovered = False
-        self.bg = pygame.Color(0, 0, 0)
-        self.shade = pygame.Color(60, 60, 80)
-        self.font_small = pygame.Color(255, 255, 255)
-        
-        
-    def draw(self, surface: pygame.Surface) -> None:
-        abs_rect = self.get_absolute_rect()
-        
-        # Background
-        color = self.bg if self.hovered else self.shade
-        pygame.draw.rect(surface, color, abs_rect)
-        
-        # Text
-        text_surf = self.font.render(self.text, True, self.font_small)
-        text_x = abs_rect.x + (abs_rect.width - text_surf.get_width()) // 2
-        text_y = abs_rect.y + (abs_rect.height - text_surf.get_height()) // 2
-        surface.blit(text_surf, (text_x, text_y))
-        
-        super().draw(surface)
-    
-    def process_event(self, event: pygame.event.Event) -> bool:
-        if event.type == pygame.MOUSEMOTION:
-            self.hovered = self.is_inside(event.pos)
-        elif event.type == pygame.MOUSEBUTTONDOWN and self.hovered:
-            if self.callback:
-                self.callback()
-            return True
-        return False
-        
-    def handle_message(self, msg: Packet) -> None:
-        if msg.sender == self.address:
-            return
-        if msg.rs == Response.M_UPDATE:
-            self.bg = pygame.Color(msg.data['bg'])
-            self.shade = pygame.Color(msg.data['shade'])
-            self.font_small = pygame.Color(msg.data['font_small'])
-
-
-class NodeTree(Component):
-    def __init__(self, x: int = 0, y: int = 0, width: int = 180, height: int = 400):
-        super().__init__(x, y, width, height)
-        self.name = 'NodeTree'
-        self.passthrough_events = True
-        self.nodes = {}  # address -> node_data
-        self.selected_node = None
-        self.font = pygame.font.Font('./assets/Chicago-12.ttf', 10)
-        self.line_height = 16
-        self.indent = 20
-        self.bg = pygame.Color(0, 0, 0)
-        self.fg = pygame.Color(0, 0, 0)
-        self.shade = pygame.Color(60, 60, 80)
-        self.font_small = pygame.Color(155, 155, 155)
-        self.font_big = pygame.Color(255, 255, 255)
-        
-    def handle_message(self, msg: Packet) -> None:
-        if msg.sender == self.address:
-            return
-        if msg.rs == Response.M_PONG:
-            self.nodes[msg.sender] = msg.data
-        elif msg.rs == Response.M_UPDATE:
-            self.bg = pygame.Color(msg.data['bg'])
-            self.fg = pygame.Color(msg.data['fg'])
-            self.shade = pygame.Color(msg.data['shade'])
-            self.font_small = pygame.Color(msg.data['font_small'])
-            self.font_big = pygame.Color(msg.data['font_big'])
-
-        super().handle_message(msg)
-
-    def _ping(self) -> None:
-        hoster = self.root()
-        if hoster:
-            self.root().bus.post(Packet(
-                                    receiver=BROADCAST,
-                                    sender=self.address,
-                                    rs=Response.M_PING,
-                                    data=True
-                                ))
-          
-    def draw(self, surface: pygame.Surface) -> None:
-        if not self.visible:
-            return
-            
-        abs_rect = self.get_absolute_rect()
-        # Background
-        pygame.draw.rect(surface, self.bg, abs_rect)
-        pygame.draw.rect(surface, self.fg, abs_rect, 1)
-        
-        # Title
-        title = self.font.render("Viewer", True, self.font_big)
-        surface.blit(title, (abs_rect.x + 5, abs_rect.y + 5))
-        
-        # Draw node tree
-        y_offset = abs_rect.y + 25
-        
-        # Root node (engine) - always first
-        root_nodes = [addr for addr, data in self.nodes.items()]
-        
-        for addr in root_nodes:
-            y_offset = self._draw_node(surface, addr, abs_rect.x, y_offset, 0)
-    
-    def _draw_node(self, surface, address, x, y, level) -> int:
-        """Draw a node and return next y position"""
-        if address not in self.nodes:
-            return y
-            
-        node = self.nodes[address]
-        indent_x = x + (level * self.indent)
-        
-        # Selection highlight
-        if address == self.selected_node:
-            pygame.draw.rect(surface, self.shade, 
-                           (indent_x, y, self.width - indent_x + x, self.line_height))
-        
-        # Node text
-        text = f"[{node['length']}] {node['type']}"
-        text_surf = self.font.render(text, True, self.font_small)
-        surface.blit(text_surf, (indent_x, y))
-        
-       
-        y += self.line_height
-        return y
-    
-    
-    def process_event(self, event: pygame.event.Event) -> bool:
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            if self.is_inside(event.pos):
-                # find node
-                abs_rect = self.get_absolute_rect()
-                rel_y = event.pos[1] - abs_rect.y - 25
-                node_index = rel_y // self.line_height
-                
-                if node_index >= 0 and node_index < len(self.nodes):
-                    addresses = list(self.nodes.keys())
-                    self.selected_node = addresses[node_index]
-                    self.reset()
-                    return True
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
-            if self.is_inside(event.pos):
-                self._ping()
-                return True
-            
-        return False
-        
 class Workspace(Component):
     def __init__(self, x: int = 0, y: int = 0, width: int = 400, height: int = 300):
         super().__init__(x, y, width, height)
         self.name = 'Workspace'
-        self.passthrough_events = False  # Should handle drops
-        self.dropped_nodes = []         # Track placed components
-        self.bg = pygame.Color(0, 0, 0)
-        self.fg = pygame.Color(0, 0, 0)
-        self.shade = pygame.Color(60, 60, 80)
-        self.font_small = pygame.Color(255, 255, 255)
-        
-    def add_node(self, node_type: str, position: tuple = None) -> Component:
-        if position is None:
-            position = (self.width // 2, self.height // 2)  # Center
-            
-        node = self._create_node(node_type, position)
-        if node:
-            self.add(node)
-            self.dropped_nodes.append(node)
-            self.reset()
-            return node
-        return None
-    
+       
     def draw(self, surface: pygame.Surface) -> None:
         if not self.visible:
             return
-            
         abs_rect = self.get_absolute_rect()
-        
-        # Workspace background
         pygame.draw.rect(surface, self.bg, abs_rect)
         pygame.draw.rect(surface, self.fg, abs_rect, 1)
-        
-        # Grid pattern for visual reference
-        for x in range(0, abs_rect.width, 20):
-            pygame.draw.line(surface, self.shade, 
-                           (abs_rect.x + x, abs_rect.y),
-                           (abs_rect.x + x, abs_rect.bottom), 1)
-        for y in range(0, abs_rect.height, 20):
-            pygame.draw.line(surface, self.shade,
-                           (abs_rect.x, abs_rect.y + y),
-                           (abs_rect.right, abs_rect.y + y), 1)
-        
         super().draw(surface)
-        
-    def handle_message(self, msg: Packet) -> None:
-        if msg.sender == self.address:
-            return
-        if msg.rs == Response.M_UPDATE:
-            self.bg = pygame.Color(msg.data['bg'])
-            self.fg = pygame.Color(msg.data['fg'])
-            self.shade = pygame.Color(msg.data['shade'])
-            self.font_small = pygame.Color(msg.data['font_small'])
-            
-            
+
+# Window Base
+
 class Window(Component):
     def __init__(self, x: int = 0, y: int = 0, width: int = 200, height: int = 150, title: str = 'Window', fixed: bool = False):
         super().__init__(x, y, width, height)
@@ -341,10 +88,6 @@ class Window(Component):
         self.dragging = False
         self.drag_offset = (0, 0)
         self.can_move = not fixed
-        
-    def initialize(self) -> None:
-        """Override this in subclasses to create custom layouts"""
-        pass
         
     def process_event(self, event: pygame.event.Event) -> bool:
         if not self.can_move:
@@ -371,25 +114,220 @@ class Window(Component):
             
         return super().process_event(event)
     
-    def hitbox_test(self, point: tuple[int, int]) -> bool:
+    def hitbox_test(self, point: tuple[int, int], hitbox_y: int = 0) -> bool:
         """Check if click is within header area"""
         if not self.is_inside(point):
             return False
         abs_rect = self.get_absolute_rect()
         local_y = point[1] - abs_rect.y
-        return local_y < 30
+        return local_y < self.height - hitbox_y
+        
+    def draw(self, surface: pygame.Surface) -> None:
+        if not self.visible:
+            return
+        abs_rect = self.get_absolute_rect()
+        pygame.draw.rect(surface, self.bg, abs_rect)
+        pygame.draw.rect(surface, self.fg, abs_rect, 1)
+        super().draw(surface)
+
+class Status(Component):
+    def __init__(self, x: int = 0, y: int = 0, width: int = 400, height: int = 20):
+        super().__init__(x, y, width, height)
+        self.name = 'Status'
+
+        # Status metrics
+        self.bus_activity = 0  # 0-1 scale
+        self.status_text = '|'
+        
+        # Activity indicators
+        self.bus_active = False
+        self.bus_activity_timer = 0
+        
+        # Discovery protocol
+        self.echo_timer = 0
+        self.echo_clock = 1.0  # 1Hz
+        self.active_components = 0
+        # animation sequence
+        self.echo_loop = ['[|...]','[.|..]','[..|.]','[...|]', '[..|.]', '[.|..]', '[|...]']
+        self.echo_index = 0
+        
+        # font (default)
+        self.font = pygame.font.Font('./assets/Chicago-12.ttf', 10)
+        
+    def update(self, dt: float) -> None:
+        if self.bus_active:
+            # 300ms highlight
+            self.bus_activity_timer = 0.3
+            self.bus_active = False
+            
+        if self.bus_activity_timer > 0:
+            self.bus_activity_timer -= dt
+                
+        self.echo_timer += dt
+        if self.echo_timer >= self.echo_clock:
+            self._solliciate()
+        
+        if self.active_components > 0:
+            self.echo_timer = 0
+            self.active_components -= 2
+            self.echo_index = (self.echo_index + 1) % len(self.echo_loop)
+
+        _r = self.root()
+        ar = _r.get_absolute_rect()
+        hb_symbol = self.echo_loop[self.echo_index]
+        self.set_status(f'{_r.name} | {_r.fps} | {_r.dt:.2f} | X{ar.x} Y{ar.x} | W{ar.w} H{ar.h} | {hb_symbol}')
+            
+        super().update(dt)
+    
+    def handle_message(self, msg: Packet) -> None:
+        if msg.sender == self.address:
+            return
+            
+        if msg.rs == Response.M_PONG:
+            self.bus_active = True
+            self.active_components += 1
+            
+        super().handle_message(msg)
+        
+    def set_status(self, text: str) -> None:
+        self.status_text = text
         
     def draw(self, surface: pygame.Surface) -> None:
         if not self.visible:
             return
             
         abs_rect = self.get_absolute_rect()
-        pygame.draw.rect(surface, (50, 50, 60), abs_rect)
-        pygame.draw.rect(surface, (100, 100, 120), abs_rect, 2)
         
-        if self.dragging:
-            header_rect = pygame.Rect(abs_rect.x, abs_rect.y, abs_rect.width, 30)
-            pygame.draw.rect(surface, (80, 80, 100), header_rect)
+        # Draw background
+        pygame.draw.rect(surface, self.bg, abs_rect)
+        pygame.draw.rect(surface, self.fg, abs_rect, 1)
+        
+        # Draw status text
+        status_surface = self.font.render(self.status_text, True, self.font_small)
+        surface.blit(status_surface, (abs_rect.x + 5, abs_rect.y + (abs_rect.height - status_surface.get_height()) // 2))
+        
+        # Draw metrics
+        metrics_x = abs_rect.right - 10
+        
+        # Bus activity indicator
+        bus_color = self._get_bus_color()
+        bus_rect = pygame.Rect(metrics_x - 10, abs_rect.y + 5, 10, 10)
+        pygame.draw.rect(surface, bus_color, bus_rect)
+        pygame.draw.rect(surface, self.fg, bus_rect, 1)
         
         super().draw(surface)
         
+    def _get_bus_color(self) -> pygame.Color:
+        if self.bus_activity_timer > 0:
+            intensity = int(255 * (self.bus_activity_timer / 0.3))
+            return pygame.Color(intensity, 10, 10)
+        else:
+            return self.bg
+    
+    def _solliciate(self) -> None:
+        host = self.root()
+        if host and hasattr(host, 'bus'):
+            host.bus.post(Packet(
+                receiver=BROADCAST,
+                sender=self.address,
+                rs=Response.M_PING,
+                data=True
+            ))
+            
+# Window Builders
+
+class WindowBase:
+    def __init__(self, engine: Component):
+        self.window = None
+        self.engine = engine
+        self.header = 0
+        self.footer = 0
+        
+    def create(self, x: int = 0, y: int = 0, width: int = 400, height: int = 300) -> 'WindowBase':
+        self.window = Window(x ,y, width, height)
+        self.window.can_close = True
+        self.window.passthrough = False
+        return self
+    
+    def build(self) -> 'WindowBase':
+        if hasattr(self.engine, 'bus'):
+            self.window.register_all(self.engine.bus)
+            self.engine.add(self.window)
+            self.engine.bus.post(Packet(receiver=BROADCAST,sender=self.window.address, rs=Response.M_PING, data=True))
+        else:
+            print('warning: missing messenger')
+        return self
+
+class Gui(WindowBase):
+    def __init__(self, engine: Component):
+        super().__init__(engine)
+        self.font_size = 12
+        self.status_size = 20
+        self.components = {}
+        
+    def with_caption(self, text: str) -> 'Gui':
+        if self.window:
+            label = Label(0, 0, text, self.font_size)
+            label.passthrough = True
+            self.components['caption'] = label
+            self.window.add(label)
+        return self
+        
+    def with_workspace(self) -> 'Gui':
+        if self.window:
+            ws = Workspace(0, 0, self.window.width, self.window.height)
+            ws.passthrough = False
+            self.components['workspace'] = ws
+            self.window.add(ws)
+        return self
+        
+    def with_debugger(self) -> 'Gui':
+        if self.window:
+            statusbar = Status(0, 0, self.window.width, self.status_size)
+            statusbar.passthrough = True
+            self.components['debugger'] = statusbar
+            self.window.add(statusbar)
+        return self
+        
+    def with_random_theme(self, base_hue: int = None) -> 'Gui':
+        if self.window and hasattr(self.engine, 'bus'):
+            theme = self.window.next_theme(base_hue)
+            self.engine.bus.post(Packet(
+                receiver=BROADCAST,
+                sender=self.window.address,
+                rs=Response.M_UPDATE,
+                data=theme
+            ))
+        return self
+        
+    def arrange(self) -> 'Gui':
+        """Auto-arrange components within window bounds"""
+        if not self.window:
+            return self
+            
+        window_rect = self.window.rect
+        current_y = 0
+        
+        # Caption
+        if 'caption' in self.components:
+            caption = self.components['caption']
+            caption.position = (0, current_y)
+            caption.width = window_rect.width
+            current_y += caption.height
+        
+        # Debugger
+        debugger_height = 0
+        if 'debugger' in self.components:
+            debugger = self.components['debugger']
+            debugger_height = debugger.height
+            debugger.position = (0, window_rect.height - debugger_height)
+            debugger.width = window_rect.width
+        
+        # Workspace
+        if 'workspace' in self.components:
+            workspace = self.components['workspace']
+            workspace_height = window_rect.height - current_y - debugger_height
+            workspace.position = (0, current_y)
+            workspace.size = (window_rect.width, max(0, workspace_height))
+            
+        return self

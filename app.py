@@ -1,14 +1,23 @@
-from core import Engine, Application
-        
+from core import Engine
+from primitives import Gui
+
+
 # ─── Bootstrapper ───────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     
-    init = Engine(1000, 600, 60, 'Editor')
-    ws = Application(0, 0, init.width, init.height, 'Workspace')
+    init = Engine(1000, 600, 60, 'init')
     
-    init.add(ws)
-    ws.initialize()
-    
+    stack = (Gui(init)
+              .create(10, 10, 600, 400)
+              .with_caption('Console')
+              .with_workspace()
+              .with_debugger()
+              .arrange()
+              .with_random_theme())
+
+    stack.build()
     init.run()
+    
+    
     

@@ -1,42 +1,27 @@
-# component.py
 import time
+import random
 import pygame
 from typing import Optional, Tuple, Dict, Callable, Any, List, Set, TYPE_CHECKING
-from bus import BROADCAST, Response, Packet, AddressBus
+
+from chain import Dispatcher, Messenger, Theme
 
 if TYPE_CHECKING:
     from component import Component
 
-class Component:
+class Component(Dispatcher, Messenger, Theme):
     def __init__(self, x: int = 0, y: int = 0, width: int = 128, height: int = 64):
+        # initializer
+        Dispatcher.__init__(self)
+        Messenger.__init__(self)
+        Theme.__init__(self)
+        
+        # allocate region
         self.rect = pygame.Rect(x, y, max(1, width), max(1, height))
-        self.visible = self.enabled = True
-        self.active = False
-        self.highlight = False
-        self.passthrough = False
-        self.parent: Optional['Component'] = None
-        self.children: List['Component'] = []
-        self.bus = None
-        self.address = -1
-        self.events: Dict[str, List[Callable]] = {event: [] for event in ['click', 'hover', 'focus', 'blur', 'keypress']}
-        self.redraw = True
-        self.surface: Optional[pygame.Surface] = None
-    
-    # RENDER & DRAW
-    def draw(self, surface: pygame.Surface) -> None:
-        if not self.visible:
-            return
-            
-        for child in self.children:
-            child.draw(surface)
-
-    def update(self, dt: float) -> None:
-        for child in self.children: child.update(dt)
-    
+        
     # MANAGEMENT
-    
     def add(self, child: 'Component') -> None:
-        if child.parent: child.parent.remove(child)
+        if child.parent: 
+            child.parent.remove(child)
         self.children.append(child)
         child.parent = self
         self.reset()
@@ -52,111 +37,23 @@ class Component:
             self._root_cache = self if self.parent is None else self.parent.root()
         return self._root_cache
     
-    def register_all(self, bus: AddressBus) -> None:
-        """Recursively register this component and all children with bus"""
-        bus.register(self)
-        for child in self.children:
-            # Recursive call
-            child.register_all(bus)
-    
-    def get_metadata(self) -> dict:
-        return {
-            'name': getattr(self, 'name', '?'),
-            'type': self.__class__.__name__,
-            'length': len(self.children),
-            'ts': time.time()
-        }
-        
-    def handle_message(self, msg: Packet) -> None:
-        hoster = self.root()
-        if hoster:
-            # avoid loopback
-            if msg.sender == self.address:
-                return
-            # discovery protocol
-            if msg.rs == Response.M_PING:
-                hoster.bus.post(Packet(receiver=msg.sender,sender=self.address, rs=Response.M_PONG, data=self.get_metadata()))
-            elif msg.rs == Response.M_SHUTDOWN:
-                self.destroy()
-            elif msg.rs == Response.M_REDRAW:
-                hoster.bus.post(Packet(receiver=msg.sender,sender=self.address, rs=Response.M_OK, data=self.get_metadata()))
-                self.reset()
-    
-    # UTILITIES
-    
-    def get_absolute_rect(self) -> pygame.Rect:
-        x, y = self.rect.topleft
-        parent = self.parent
-        while parent:
-            x += parent.rect.x
-            y += parent.rect.y
-            parent = parent.parent
-        return pygame.Rect(x, y, self.rect.width, self.rect.height)
-
-    def handle_event(self, event: pygame.event.Event) -> bool:
-        if not self.visible or not self.enabled: return False
-        for child in reversed(self.children):
-            if child.handle_event(event): return True
-        return self.process_event(event)
-    
-    def process_event(self, event: pygame.event.Event) -> bool:
-        if self.passthrough:
-            return False
-            
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            if self.is_inside(event.pos):
-                # deactivate hierarchy
-                if self.parent and not self.active:
-                    self.parent.deactivate_container(self)
-                self.trigger('click', event)
-                self.active = True
-                self.trigger('focus', event)
-                return True
-            elif self.active:
-                # lost focus
-                self.active = False
-                self.trigger('blur', event)
-        
-        elif event.type == pygame.MOUSEMOTION and self.is_inside(event.pos):
-            self.trigger('hover', event)
-            return True
-        
-        elif event.type == pygame.KEYDOWN and self.active:
-            self.trigger('keypress', event)
-            return True
-        
-        return False
-    
-    def is_inside(self, point: tuple[int, int]) -> bool:
-        return self.get_absolute_rect().collidepoint(point)
-
-    def on(self, event_type: str, handler: Callable) -> None:
-        if event_type in self.events: self.events[event_type].append(handler)
-    
-    def off(self, event_type: str, handler: Callable) -> None:
-        if event_type in self.events:
-            self.events[event_type] = [h for h in self.events[event_type] if h != handler]
-    
-    def trigger(self, event_type: str, event: pygame.event.Event) -> None:
-        for handler in self.events[event_type]: handler(self, event)
+    def destroy(self) -> None:
+        for child in self.children[:]: 
+            child.destroy()
+        self.children.clear()
+        self.parent = None
+        self.terminated = True
     
     def reset(self) -> None:
         self.redraw = True
-        if self.parent: self.parent.reset()
+        if self.parent: 
+            self.parent.reset()
 
     def reset_cache(self):
         if hasattr(self, '_root_cache'):
             del self._root_cache
         for child in self.children:
             child.reset_cache()
-  
-    def destroy(self) -> None:
-        for child in self.children[:]: child.destroy()
-        self.children.clear()
-        self.parent = None
-
-    def contains_point(self, point: tuple[int, int]) -> bool:
-        return self.is_inside(point) or any(child.contains_point(point) for child in self.children)
     
     def bring_to_front(self) -> None:
         if self.parent:
@@ -170,14 +67,59 @@ class Component:
             self.parent.children.insert(0, self)
             self.parent.reset()
 
-    def deactivate_container(self, root: 'Component' = None) -> None:
-        for child in self.children:
-            if child != root and child.active:
-                child.active = False
-                child.trigger('blur', pygame.event.Event(pygame.USEREVENT))
+    # UTILITIES
+    def get_absolute_rect(self) -> pygame.Rect:
+        x, y = self.rect.topleft
+        parent = self.parent
+        while parent:
+            x += parent.rect.x
+            y += parent.rect.y
+            parent = parent.parent
+        return pygame.Rect(x, y, self.rect.width, self.rect.height)
+
+    @staticmethod
+    def next_theme(base_hue: int = None) -> Dict[str, Tuple[int, int, int]]:
+        """Generate a harmonious pastel theme based on hue"""
+        if base_hue is None:
+            base_hue = random.randint(0, 360)
+        
+        return {
+            'bg': Component._hsl_to_rgb(base_hue, 15, 12),        # Dark background
+            'fg': Component._hsl_to_rgb(base_hue, 25, 25),        # Medium foreground  
+            'shade': Component._hsl_to_rgb(base_hue, 20, 18),     # Border/shadow
+            'font_small': Component._hsl_to_rgb(base_hue, 70, 85), # Light text
+            'font_big': Component._hsl_to_rgb(base_hue, 80, 95),   # Bright text
+        }
+    
+    @staticmethod
+    def _hsl_to_rgb(h: int, s: int, l: int) -> Tuple[int, int, int]:
+        """Convert HSL to RGB tuple"""
+        h = h / 360.0
+        s = s / 100.0
+        l = l / 100.0
+        
+        if s == 0:
+            rgb = l, l, l
+        else:
+            def hue_to_rgb(p, q, t):
+                if t < 0: t += 1
+                if t > 1: t -= 1
+                if t < 1/6: return p + (q - p) * 6 * t
+                if t < 1/2: return q
+                if t < 2/3: return p + (q - p) * (2/3 - t) * 6
+                return p
+            
+            q = l * (1 + s) if l < 0.5 else l + s - l * s
+            p = 2 * l - q
+            
+            r = hue_to_rgb(p, q, h + 1/3)
+            g = hue_to_rgb(p, q, h)
+            b = hue_to_rgb(p, q, h - 1/3)
+            rgb = r, g, b
+        
+        return int(rgb[0] * 255), int(rgb[1] * 255), int(rgb[2] * 255)
 
     # PROPERTIES
-    
     @property
     def x(self) -> int: return self.rect.x
     @x.setter
@@ -206,7 +148,6 @@ class Component:
     @property
     def size(self) -> Tuple[int, int]: return (self.rect.width, self.rect.height)
     @size.setter
-    def size(self, value: Tuple[int, int]): self.rect.width, self.rect.height = max(1, value[0]), max(1, value[1]); self.reset()
-    
-    
-
+    def size(self, value: Tuple[int, int]): 
+        self.rect.width, self.rect.height = max(1, value[0]), max(1, value[1])
+        self.reset()
