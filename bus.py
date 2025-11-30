@@ -30,6 +30,7 @@ class Response(IntEnum):
     # advertisers
     M_REGISTER = 23 # component new
     M_BYE = 24      # component closure
+    M_LOCK = 25     # component lock
     
 
 @dataclass(frozen=True)

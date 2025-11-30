@@ -174,6 +174,8 @@ class Theme:
     def __init__(self):
         # Border & Filler
         self.border = False
+        self.border_style = 0  # 0: solid, 1: dashed, 2: dotted
+        self.border_thickness = 1
         self.filler = False
         self.filler_style = 0 # 0-4: solid, dots, lines, crossed, gradient
         
@@ -192,14 +194,72 @@ class Theme:
         self.font           = pygame.font.Font('./assets/JetBrainsMono-Regular.ttf', 12)
         self.fontS          = pygame.font.Font('./assets/JetBrainsMono-Bold.ttf', 9)
         self.fontB          = pygame.font.Font('./assets/JetBrainsMono-Bold.ttf', 15)
-        
-    def draw_frame(self, surface: pygame.Surface) -> None:
+    
+    def draw_locked(self, surface: pygame.Surface) -> None:
         abs_rect = self.get_absolute_rect()
         x, y, w, h = abs_rect
-        pygame.draw.line(surface, self.shade, (x, y), (x + w, y), 1)           # Top
-        pygame.draw.line(surface, self.shade, (x, y + h), (x + w, y + h), 1)   # Bottom  
-        pygame.draw.line(surface, self.shade, (x, y), (x, y + h), 1)           # Left
-        pygame.draw.line(surface, self.shade, (x + w, y), (x + w, y + h), 1)   # Right
+        pygame.draw.line(surface, (255,90,90), (x-1, y-1), (x-1 + w+1, y-1), 2)
+        
+    def draw_frame(self, surface: pygame.Surface) -> None:
+        if not self.visible or not self.border:
+            return
+        
+        abs_rect = self.get_absolute_rect()
+        x, y, w, h = abs_rect
+        color = self.fg
+        thickness = self.border_thickness
+        
+        style = getattr(self, 'border_style', 0)
+        
+        if style == 0:
+            # Solid
+            pygame.draw.rect(surface, color, abs_rect, thickness)
+        elif style == 1:
+            # Dashed
+            self._draw_dashed_rect(surface, abs_rect, color, thickness, dash_len=5, gap_len=3)
+        elif style == 2:
+            # Dotted
+            self._draw_dashed_rect(surface, abs_rect, color, thickness, dash_len=1, gap_len=2)
+
+    def _draw_dashed_rect(self, surface: pygame.Surface, rect: pygame.Rect, color: pygame.Color, thickness: int, dash_len: int, gap_len: int) -> None:
+        x, y, w, h = rect
+        # Top edge
+        # Bottom edge
+        # Left edge
+        # Right edge
+        self._draw_dashed_line(surface, (x, y), (x + w, y), color, thickness, dash_len, gap_len)
+        self._draw_dashed_line(surface, (x, y + h - thickness), (x + w, y + h - thickness), color, thickness, dash_len, gap_len)
+        self._draw_dashed_line(surface, (x, y), (x, y + h), color, thickness, dash_len, gap_len)
+        self._draw_dashed_line(surface, (x + w - thickness, y), (x + w - thickness, y + h), color, thickness, dash_len, gap_len)
+
+    def _draw_dashed_line(self, surface: pygame.Surface, start: Tuple[int, int], end: Tuple[int, int], color: pygame.Color, thickness: int, dash_len: int, gap_len: int) -> None:
+        x1, y1 = start
+        x2, y2 = end
+        dx = x2 - x1
+        dy = y2 - y1
+        length = max(abs(dx), abs(dy))
+        if length == 0:
+            return
+
+        # Normalize direction
+        step_x = dx / length
+        step_y = dy / length
+
+        pos = 0.0
+        drawing = True
+        while pos < length:
+            seg_len = dash_len if drawing else gap_len
+            next_pos = min(pos + seg_len, length)
+            
+            if drawing:
+                sx = int(x1 + pos * step_x)
+                sy = int(y1 + pos * step_y)
+                ex = int(x1 + next_pos * step_x)
+                ey = int(y1 + next_pos * step_y)
+                pygame.draw.line(surface, color, (sx, sy), (ex, ey), thickness)
+            
+            pos = next_pos
+            drawing = not drawing
     
     def fill_region(self, surface: pygame.Surface, pattern: int = 0) -> None:
         abs_rect = self.get_absolute_rect()
@@ -228,9 +288,9 @@ class Theme:
         if base_hue is None:
             base_hue = random.randint(0, 360)
         return {
-            'fg':        Theme._hsl_to_rgb(base_hue, 75, 75),   # default foreground
-            'bg':        Theme._hsl_to_rgb(base_hue, 10, 10),   # default background
-            'shade':     Theme._hsl_to_rgb(base_hue, 25, 25),   # default shadow
+            'fg':        Theme._hsl_to_rgb(base_hue, 80, 80),   # default foreground
+            'bg':        Theme._hsl_to_rgb(base_hue, 20, 20),   # default background
+            'shade':     Theme._hsl_to_rgb(base_hue, 45, 45),   # default shadow
 
             # Text
             'font_small': Theme._hsl_to_rgb(base_hue, 80, 80),  # default text

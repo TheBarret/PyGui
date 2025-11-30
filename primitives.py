@@ -35,8 +35,6 @@ class Container(Component):
     def __init__(self, x: int = 0, y: int = 0,  width: int = 90, height: int = 45):
         super().__init__(x, y, width, height)
         self.name = 'Container'
-        self.filler = True
-        self.filler_style = 0
             
     def draw(self, surface: pygame.Surface) -> None:
         if not self.visible:
@@ -128,6 +126,8 @@ class MultiLabel(Component):
         self.text = text
         self.filler = True
         self.filler_style = 0
+        self.border = True
+        self.border_style = 2
 
     @property
     def text(self) -> str:
@@ -224,7 +224,7 @@ class Button(Component):
                  style: Style = Style.SMALL):
         super().__init__(x, y, width, height)
         self.name = 'Button'
-        self.filler = False
+        self.filler = True
         self.filler_style = 0
         self.text = text
         self.padding = 4
@@ -235,7 +235,10 @@ class Button(Component):
         self._font = self.fontB if self.text_style == Style.BIG else \
                      self.fontS if self.text_style == Style.SMALL else \
                      self.font
-                         
+    
+    def _null(self) -> None:
+        return
+        
     def process_event(self, event: pygame.event.Event) -> bool:
         consumed = super().process_event(event)
         
@@ -249,6 +252,7 @@ class Button(Component):
     def draw(self, surface: pygame.Surface) -> None:
         if not self.visible:
             return
+        super().draw(surface)
         
         abs_rect = self.get_absolute_rect()
         if self.text:
@@ -270,7 +274,7 @@ class Button(Component):
             else:
                 display = raw_text
             
-            text_surf = self._font.render(display, True, self.fg)
+            text_surf = self._font.render(display, True, self.font_small)
             text_rect = text_surf.get_rect()
             if self.text_align == Alignment.LEFT:
                 text_rect.left = abs_rect.left + self.padding
@@ -287,248 +291,4 @@ class Button(Component):
                 text_rect.centery = abs_rect.centery
             
             surface.blit(text_surf, text_rect)
-        
-        super().draw(surface)
-        
-    def _null(self) -> None:
-        return
 
-# Window Base
-
-class Window(Component):
-    def __init__(self, x: int = 0, y: int = 0, width: int = 200, height: int = 150, title: str = 'Window', fixed: bool = False):
-        super().__init__(x, y, width, height)
-        self.name = 'Window'
-        self.caption = title
-        self.dragging = False
-        self.drag_offset = (0, 0)
-        self.can_move = not fixed
-        self.filler = True
-        self.filler_style = 0
-        self.border = True
-        
-        
-    def update(self, dt: float) -> None:
-        super().update(dt)
-        
-    def draw(self, surface: pygame.Surface) -> None:
-        if not self.visible:
-            return
-        super().draw(surface)
-        
-    def process_event(self, event: pygame.event.Event) -> bool:
-        if not self.can_move:
-            return super().process_event(event)
-        
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            if self.hitbox_test(event.pos):
-                self.dragging = True
-                abs_rect = self.get_absolute_rect()
-                self.drag_offset = (event.pos[0] - abs_rect.x, event.pos[1] - abs_rect.y)
-                self.bring_to_front()
-                return True
-                
-        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
-            if self.dragging:
-                self.dragging = False
-                return True
-                
-        elif event.type == pygame.MOUSEMOTION and self.dragging:
-            new_x = event.pos[0] - self.drag_offset[0]
-            new_y = event.pos[1] - self.drag_offset[1]
-            self.position = (new_x, new_y)
-            return True
-            
-        return super().process_event(event)
-    
-    # Default dialog pre-states
-    
-    def click_ok(self) -> None:
-        hoster = self.root()
-        if hoster:
-            theme = self.new_theme()
-            hoster.bus.post(Packet(
-                receiver=BROADCAST,
-                sender=self.address,
-                rs=Response.M_OK,
-                data=self
-            ))
-        self.destroy()
-        
-    def click_cancel(self) -> None:
-        hoster = self.root()
-        if hoster:
-            theme = self.new_theme()
-            hoster.bus.post(Packet(
-                receiver=BROADCAST,
-                sender=self.address,
-                rs=Response.M_CANCEL,
-                data=self
-            ))
-        self.destroy()
-        
-    def cycle_theme(self) -> None:
-        hoster = self.root()
-        if hoster:
-            theme = self.new_theme()
-            hoster.bus.post(Packet(
-                receiver=BROADCAST,
-                sender=0, # root
-                rs=Response.M_THEME,
-                data=theme
-            ))
-    
-    def toggle_lock(self) -> None:
-        self.can_move = not self.can_move
-        hoster = self.root()
-        if hoster:
-            hoster.bus.post(Packet(
-                receiver=BROADCAST,
-                sender=self.address,
-                rs=Response.M_LOCK,
-                data=not self.can_move
-            ))
-        
-    def destroy(self) -> None:
-        hoster = self.root()
-        if hoster:
-            hoster.bus.post(Packet(receiver=hoster.address,sender=self.address, rs=Response.M_BYE, data=self))
-        super().destroy()
-    
-    def hitbox_test(self, point: tuple[int, int], hitbox_y: int = 0) -> bool:
-        """Check if click is within header area"""
-        if not self.is_inside(point):
-            return False
-        abs_rect = self.get_absolute_rect()
-        local_y = point[1] - abs_rect.y
-        return local_y < self.height - hitbox_y
-        
-            
-# Window Builders
-
-class WindowBase:
-    def __init__(self, engine: Component):
-        self.window = None
-        self.engine = engine
-        self.header = 0
-        self.footer = 0
-        
-    def create(self, x: int = 0, y: int = 0, width: int = 400, height: int = 300) -> 'WindowBase':
-        self.window = Window(x ,y, width, height)
-        self.window.can_close = True
-        self.window.passthrough = False
-        return self
-    
-    def build(self) -> 'WindowBase':
-        if hasattr(self.engine, 'bus'):
-            self.engine.add(self.window)
-            self.engine.bus.post(Packet(receiver=BROADCAST,sender=self.window.address, rs=Response.M_PING, data=True))
-        else:
-            print('Warning: missing bus messenger instance')
-        return self
-
-class Gui(WindowBase):
-    def __init__(self, engine: Component):
-        super().__init__(engine)
-        self.tag = ""
-        self.header = 24
-        self.padding = 4
-        self.content = None
-        self.components = {}
-
-    def as_dialog(self, title: str, message: str) -> 'Gui':
-        self.tag = title
-        self.content = message
-        if self.window:
-            # icon
-            c_icon = Container(0, 0, self.header, self.header)
-            c_icon.name = 'Icon'
-            c_icon.passthrough = True
-            c_icon.border = True
-            self.components['icon'] = c_icon
-            self.window.add(c_icon)
-            
-            # title caption
-            c_label = Label(self.header, 0, 1, self.header, self.tag, 
-                            Alignment.LEFT, Alignment.CENTER, Style.BIG)
-            c_label.passthrough = True
-            c_label.border = True
-            self.components['label'] = c_label
-            self.window.add(c_label)
-            
-            # finalize layout
-            self._layout_dialog()
-        return self
-
-    def _layout_dialog(self) -> None:
-        if not self.window or 'icon' not in self.components:
-            return
-        c_icon = self.components['icon']
-        c_label = self.components['label']
-        
-        c_icon.size = (self.header, self.header)
-        c_icon.position = (0, 0)
-        
-        c_label.position = (self.header, 0)
-        c_label.size = (self.window.width - self.header, self.header)
-        
-        if 'button_ok' not in self.components:
-            btn_ok = Button(self.window.width - 120, self.window.height - 30, 60, 30, 'OK',
-                            Alignment.CENTER, Alignment.CENTER, Style.SMALL)
-            btn_ok.name = 'button_ok'
-            btn_ok.border = True
-            btn_ok.on_click = self.window.click_ok
-            self.components['button_ok'] = btn_ok
-            self.window.add(btn_ok)
-        if 'button_cancel' not in self.components:
-            btn_cancel = Button(self.window.width - 60, self.window.height - 30, 60, 30, 'CANCEL',
-                                Alignment.CENTER, Alignment.CENTER, Style.SMALL)
-            btn_cancel.name = 'button_cancel'
-            btn_cancel.border = True
-            btn_cancel.on_click = self.window.cycle_theme#self.window.click_cancel
-            self.components['button_cancel'] = btn_cancel
-            self.window.add(btn_cancel)
-        if 'information' not in self.components:
-            c_msg = MultiLabel(0, 0, 1, 1, '',
-                               Alignment.LEFT, Alignment.CENTER, Style.SMALL)
-            c_msg.name = 'information'
-            c_msg.passthrough = True
-            self.components['information'] = c_msg
-            self.window.add(c_msg)
-            
-        # Final update & reposition
-        btn_ok.position = (self.window.width - 120-self.padding, self.window.height - 30-self.padding)
-        btn_cancel.position = (self.window.width - 60-self.padding, self.window.height - 30-self.padding)
-        usable_height = self.window.height - self.header - btn_ok.height - 2 * self.padding
-        usable_width = self.window.width - 2 * self.padding
-        c_msg.size = (usable_width, max(1, usable_height))
-        c_msg.position = (self.padding, self.header + self.padding)
-        c_msg.text = self.content
-        
-        # Register components
-        if hasattr(self.engine, 'bus'):
-            self.engine.bus.register(c_icon)
-            self.engine.bus.register(c_label)
-            self.engine.bus.register(btn_ok)
-            self.engine.bus.register(btn_cancel)
-            self.engine.bus.register(c_msg)
-
-    def reset(self) -> None:
-        self._layout_dialog()
-        if self.parent:
-            self.parent.reset()
-        else:
-            self.window.reset()
-
-    def set_theme(self, base_hue: int = None) -> 'Gui':
-        if hasattr(self.engine, 'bus'):
-            theme = self.window.new_theme(base_hue)
-            self.engine.bus.post(Packet(
-                receiver=BROADCAST,
-                sender=MASTER,
-                rs=Response.M_THEME,
-                data=theme
-            ))
-        return self
-        
-    
