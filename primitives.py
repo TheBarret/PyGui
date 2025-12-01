@@ -426,14 +426,10 @@ class Slider(Component):
         return int(self.padding + normalized * (self.width - 2 * self.padding - self.knob_size))
     
     def _position_to_value(self, x: int) -> float:
-        """Convert knob x position to value - x is in screen coordinates"""
-        # Get the absolute position of the slider
+        """Convert position to value"""
+
         abs_rect = self.get_absolute_rect()
-        
-        # Convert screen coordinate to local coordinate
         local_x = x - abs_rect.x
-        
-        # Clamp to valid range (accounting for padding and knob size)
         max_range = self.width - 2 * self.padding - self.knob_size
         relative_x = max(0, min(local_x - self.padding, max_range))
         

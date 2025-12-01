@@ -6,7 +6,6 @@ from typing import List, Any, Dict, Tuple, Callable
 from component import Component
 from primitives import Alignment, Style
 from primitives import Container, Label, MultiLabel, Button, Toolbar
-from utilities import Blinker, Pulsar
 
 from bus import BROADCAST, MASTER, Response, Packet, AddressBus
 
@@ -18,47 +17,29 @@ class WindowRoot(Component):
         self.name = 'Window'
         self.caption = title
         
-    # Default input return
+class WindowManagement(WindowRoot):
+    def __init__(self, x: int = 0, y: int = 0, width: int = 200, height: int = 150, title: str = 'Window', fixed: bool = False):
+        super().__init__(x, y, width, height)
+        self.dragging = False
+        self.drag_offset = (0, 0)
+        self.can_move = not fixed
+        self.can_snap = True
+        self.can_close = True
     
-    def click_ok(self) -> None:
+    def toggle_snap(self) -> None:
+        self.can_snap = not self.can_snap
         hoster = self.root()
-        if hoster:
-            theme = self.new_theme()
+        if hasattr(hoster, 'bus'):
             hoster.bus.post(Packet(
                 receiver=BROADCAST,
                 sender=self.address,
-                rs=Response.M_OK,
-                data=self
+                rs=Response.M_SNAP,
+                data=self.get_metadata()
             ))
-        self.destroy()
-        
-    def click_cancel(self) -> None:
+    def toggle_theme(self) -> None:
         hoster = self.root()
+        theme = self.new_theme(-1, random.random())
         if hasattr(hoster, 'bus'):
-            theme = self.new_theme()
-            hoster.bus.post(Packet(
-                receiver=BROADCAST,
-                sender=self.address,
-                rs=Response.M_CANCEL,
-                data=self
-            ))
-        self.destroy()
-    
-    def cycle_contrast(self, intensity: int = 1) -> None:
-        r_val: float = abs(intensity)/100
-        hoster = self.root()
-        if hasattr(hoster, 'bus'):
-            hoster.bus.post(Packet(
-                receiver=BROADCAST,
-                sender=MASTER,
-                rs=Response.M_CONTRAST,
-                data=r_val
-            ))
-            
-    def cycle_theme(self, hue: int = -1) -> None:
-        hoster = self.root()
-        if hasattr(hoster, 'bus'):
-            theme = self.new_theme(hue)
             hoster.bus.post(Packet(
                 receiver=BROADCAST,
                 sender=MASTER,
@@ -74,15 +55,20 @@ class WindowRoot(Component):
                 receiver=BROADCAST,
                 sender=self.address,
                 rs=Response.M_LOCK,
-                data={'lock': not self.can_move, 'address': self.address}
+                data=self.get_metadata()
             ))
-        
-class WindowFeatures(WindowRoot):
-    def __init__(self, x: int = 0, y: int = 0, width: int = 200, height: int = 150, title: str = 'Window', fixed: bool = False):
-        super().__init__(x, y, width, height)
-        self.dragging = False
-        self.drag_offset = (0, 0)
-        self.can_move = not fixed
+
+    def draw(self, surface: pygame.Surface) -> None:
+        if not self.visible:
+            return
+        if not self.can_move:
+            self.border_style = 0
+        elif self.dragging:
+            self.border_style = 1
+        else:
+            self.border_style = 0
+            
+        super().draw(surface)
     
     def process_event(self, event: pygame.event.Event) -> bool:
         if not self.can_move:
@@ -99,6 +85,14 @@ class WindowFeatures(WindowRoot):
         elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
             if self.dragging:
                 self.dragging = False
+                hoster = self.root()
+                if hasattr(hoster, 'bus'):
+                    hoster.bus.post(Packet(
+                        receiver=BROADCAST,
+                        sender=self.address,
+                        rs=Response.M_PULSE,
+                        data=self.get_metadata()
+                    ))
                 return True
                 
         elif event.type == pygame.MOUSEMOTION and self.dragging:
@@ -123,9 +117,9 @@ class WindowFeatures(WindowRoot):
         return local_y < self.height - hitbox_y
         
     def snap_on(self, threshold: int = 10) -> None:
-        if not self.parent:
+        if not self.parent or not self.can_snap:
             return
-
+        
         # Get all sibling windows (same parent, visible, not self)
         siblings = [
             child for child in self.parent.children
@@ -156,7 +150,7 @@ class WindowFeatures(WindowRoot):
                 dy = their_rect.bottom - my_rect.bottom
                 self.y += dy
                 
-class Window(WindowFeatures):
+class Window(WindowManagement):
     def __init__(self, x: int = 0, y: int = 0, width: int = 200, height: int = 150, title: str = 'Window', fixed: bool = False):
         super().__init__(x, y, width, height)
         self.filler = True
@@ -164,25 +158,12 @@ class Window(WindowFeatures):
         self.border = True
         self.border_style = 0
         
-    def update(self, dt: float) -> None:
-        super().update(dt)
-        
-    def draw(self, surface: pygame.Surface) -> None:
-        if not self.visible:
-            return
-        if not self.can_move:
-            self.border_style = 0
-        else:
-            self.border_style = 1
-            
-        super().draw(surface)
-    
     def destroy(self) -> None:
-        hoster = self.root()
-        if hasattr(hoster, 'bus'):
-            hoster.bus.post(Packet(receiver=hoster.address,sender=self.address, rs=Response.M_BYE, data=self))
-        self.can_close = True
-        super().destroy()
+        if self.can_close:
+            hoster = self.root()
+            if hasattr(hoster, 'bus'):
+                hoster.bus.post(Packet(receiver=BROADCAST,sender=self.address, rs=Response.M_BYE, data=self))
+            super().destroy()
     
     
             

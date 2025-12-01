@@ -1,6 +1,9 @@
 import pygame
 import time
+import json
+import os
 import random
+import traceback
 from typing import List, Any, Tuple, Callable, Optional
 from component import Component
 from bus import BROADCAST, MASTER, Response, Packet, AddressBus
@@ -22,6 +25,10 @@ class Engine(Component):
         self.bus_freq = 0.2
         self.bus_accumulator = 0.0
         self.bus.register(self)
+        self.current_hue = 180.0
+        self.current_contrast = 0.7
+        self.profile = './assets/profile.json'
+        
         
     def root(self) -> 'Component':
         return self
@@ -49,8 +56,8 @@ class Engine(Component):
                         self.destroy()
                         closing = True
                         continue
-                    if not closing:
-                        self.handle_event(event)
+                    #if not closing:
+                    self.handle_event(event)
                 
                 self.dt = self.clock.tick(self.fps) / 1000.0
                 
@@ -70,7 +77,8 @@ class Engine(Component):
             print("Interrupted by user...")
             self.destroy()
         except Exception as e:
-            print(f"Fatal: {e}")
+            print(f"Fatal:\n{e}")
+            print(f"Stack:\n{traceback.format_exc()}")
             self.destroy()
         finally:
             pygame.quit()    
@@ -95,22 +103,79 @@ class Engine(Component):
     def handle_message(self, msg: Packet) -> None:
         if msg.sender == self.address:
             return
-        if msg.receiver  == BROADCAST:
-            print(f'[engine] * <BROADCAST:{msg.rs.name}> {msg.data}')
-        else:
-            print(f'[engine] * <{msg.sender}:{msg.rs.name}> {msg.data}')
-        
+            
         if msg.rs == Response.M_BYE:
             defunkt = msg.data
             if defunkt and defunkt.terminated:
                 self.remove(defunkt)
+                
+        if not msg.rs == Response.M_PING:
+            if msg.receiver  == BROADCAST:
+                print(f'[engine] * <BROADCAST:{msg.rs.name}> {msg.data}')
+            else:
+                print(f'[engine] * <{msg.sender}:{msg.rs.name}> {msg.data}')
+        
         super().handle_message(msg)
     
-    def set_theme(self, base_hue: int = None) -> None:
-        theme = self.new_theme(base_hue)
+    def set_theme(self, hue: float, contrast: float) -> None:
+        theme = self.new_theme(hue, contrast)
         self.bus.post(Packet(
             receiver=BROADCAST,
             sender=MASTER,
             rs=Response.M_THEME,
             data=theme
         ))
+        
+    def load_profile(self) -> bool:
+        filepath = self.profile
+        
+        try:
+            if not os.path.exists(filepath):
+                print(f'[engine] * * profile not found: {filepath}, using defaults * *')
+                # Set default values
+                self.current_hue = 180
+                self.current_contrast = 0.7
+                return False
+            
+            with open(filepath, 'r', encoding='utf-8') as f:
+                profile = json.load(f)
+            
+            profile_data = profile.get('profile', {})
+            
+            self.current_hue = float(profile_data.get('hue', 180))
+            self.current_contrast = float(profile_data.get('contrast', 0.7))
+            self.set_theme(self.current_hue, self.current_contrast)
+            
+            print(f'[engine] * * profile loaded from {filepath} * * ')
+            return True
+            
+        except Exception as e:
+            print(f'Error: Failed to load theme profile: {e}')
+            # Set defaults on error
+            self.current_hue = 180
+            self.current_contrast = 0.7
+            self.current_saturation = 50
+            self.text_brightness = 15
+            return False
+            
+    def save_profile(self) -> bool:
+        filepath = self.profile
+        try:
+            os.makedirs(os.path.dirname(filepath), exist_ok=True)
+            
+            profile = {
+                'profile': {
+                    'hue': getattr(self, 'hue', 180),
+                    'contrast': getattr(self, 'contrast', 0.7),
+                }
+            }
+            
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump(profile, f, indent=2, ensure_ascii=False)
+            
+            print(f'[engine] profile saved to {filepath}')
+            return True
+            
+        except Exception as e:
+            print(f'[engine] Failed to save theme profile: {e}')
+            return False

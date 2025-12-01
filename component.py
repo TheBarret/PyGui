@@ -46,7 +46,10 @@ class Component(Dispatcher, Messenger, Theme):
         return self._root_cache
     
     def destroy(self) -> None:
-        for child in self.children[:]: 
+        hoster = self.root()
+        for child in self.children[:]:
+            if hasattr(hoster, 'bus'):
+                hoster.bus.unregister(child)
             child.destroy()
         self.children.clear()
         self.parent = None

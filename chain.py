@@ -148,11 +148,19 @@ class Messenger:
         metadata = {
             'name'      : getattr(self, 'name', '?'),
             'type'      : self.__class__.__name__,
-            'children'  : len(self.children),
-            'delta'     : time.time(),
             'address'   : self.address,
+            'x'         : self.rect.x, 
+            'y'         : self.rect.y, 
+            'width'     : self.rect.width, 
+            'height'    : self.rect.height, 
+            'time'      : time.time()
         }
-        # parent if any
+        # is window?
+        if self and hasattr(self, 'can_move'):
+            metadata['locked'] = not self.can_move
+            metadata['snapping'] = self.can_snap
+            
+        # parent?
         if self.parent and hasattr(self.parent, 'name'):
             metadata['parent'] = self.parent.name
         return metadata
@@ -174,6 +182,8 @@ class Messenger:
             self.shade      = pygame.Color(msg.data['shade'])
             self.font_small = pygame.Color(msg.data['font_small'])
             self.font_big   = pygame.Color(msg.data['font_big'])
+            self.hue        = int(msg.data['hue'])
+            self.contrast   = float(msg.data['contrast'])
             self.reset()
         elif msg.rs == Response.M_LOCK:
             pass # silently
@@ -207,7 +217,9 @@ class Theme:
         self.redraw = True
         
         # Default colors
+        self.hue            = 50
         self.contrast       = 0.1
+        
         self.bg             = pygame.Color(90, 90, 90)
         self.fg             = pygame.Color(255, 255, 255)
         self.shade          = pygame.Color(70, 70, 70)
@@ -302,19 +314,26 @@ class Theme:
                 ratio = i / abs_rect.height
                 color = self._color_lerp(self.shade, self.bg, ratio)
                 pygame.draw.line(surface, color, (abs_rect.x, y), (abs_rect.right, y))
-
-    def new_theme(self, base_hue: int = -1) -> Dict[str, Tuple[int, int, int]]:
+    
+    def new_theme(self, base_hue: int = -1, contrast: float = 0.0) -> Dict[str, Tuple[int, int, int]]:
         if base_hue == -1:
-            base_hue = random.randint(0, 360)
+            self.hue = random.randint(0, 360)
+        else:
+            self.hue = base_hue
+        
+        self.contrast = contrast
         
         bg_lightness = max(10, min(40, 40 * (1 - self.contrast * 0.5)))  # 10-40
-        fg_lightness = min(95, 60 + (self.contrast * 35))  # 60-95
-        shade_lightness = (bg_lightness + fg_lightness) // 2  # Midpoint
+        fg_lightness = min(95, 60 + (self.contrast * 35))                # 60-95
+        
+        shade_lightness = (bg_lightness + fg_lightness) // 2             # Midpoint
+        
         bg_saturation = max(5, min(25, 25 * (1 - self.contrast * 0.3)))  # 5-25
-        fg_saturation = min(90, 70 + (self.contrast * 20))  # 70-90
-        shade_saturation = (bg_saturation + fg_saturation) // 2  # Midpoint
-        font_lightness = fg_lightness  # Usually light fonts
-        font_saturation = fg_saturation  # Keep similar saturation to fg
+        fg_saturation = min(90, 70 + (self.contrast * 20))               # 70-90
+        
+        shade_saturation = (bg_saturation + fg_saturation) // 2          # Midpoint
+        font_lightness = fg_lightness
+        font_saturation = fg_saturation
         
         return {
             'bg':        Theme._hsl_to_rgb(base_hue, bg_saturation, bg_lightness),      # Background
@@ -323,6 +342,9 @@ class Theme:
             
             'font_small': Theme._hsl_to_rgb(base_hue, font_saturation, min(90, font_lightness + 10)),  # Text
             'font_big':   Theme._hsl_to_rgb(base_hue, font_saturation, min(100, font_lightness + 15)), # Headers
+            
+            'hue':        self.hue,      # style metadata
+            'contrast':   self.contrast, # style metadata
         }
             
     def _color_lerp(self, color1: pygame.Color, color2: pygame.Color, ratio: float) -> pygame.Color:

@@ -29,9 +29,10 @@ class Response(IntEnum):
     M_CONTRAST = 23 # update contrast
     
     # advertisers
-    M_REGISTER = 33 # component new
-    M_BYE = 34      # component closure
-    M_LOCK = 35     # component lock
+    M_BYE = 30      # component closure
+    M_LOCK = 31     # component lock
+    M_SNAP = 32     # component snap
+    M_PULSE = 33     # component is touched
     
 
 @dataclass(frozen=True)
@@ -67,12 +68,12 @@ class AddressBus:
             component.address = addr
         
         self._components[addr] = component
-        print(f'[register] {component.name} at: {component.address} {component.rect}')
+        print(f'[added] 0x{component.address}: {component.name}({component.rect})')
         return addr
 
     def unregister(self, component: 'Component') -> None:
         self._components.pop(component.address, None)
-        print(f'[unregister] {component.name} at: {component.address} {component.rect}')
+        print(f'[removed] 0x{component.address}: {component.name}({component.rect})')
     
     # Posting
     def post(self, msg: Packet) -> bool:
