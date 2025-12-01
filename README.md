@@ -1,8 +1,9 @@
 # PyGui
 A Lightweight, Message-Driven GUI Framework for PyGame (WIP)  
-*Inspired by the PyGame community — built to contribute back.*
+*Inspired by the PyGame community,  built to contribute back.*
 
-The gui is a minimal, component-based framework built exclusively for PyGame (Python 3.10+). Designed from the ground up for clarity and extensibility, it provides windowing, layout, theming, and event handling — without external dependencies.  
+The gui is a minimal, component-based framework built exclusively for PyGame (Python 3.10+).  
+Designed from the ground up for clarity and extensibility, it provides windowing, layout, theming, and event handling,  without external dependencies.  
 
 ## Core Principles
 
